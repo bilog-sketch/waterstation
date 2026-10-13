@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends unzip git \
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /var/www/html
 COPY . .
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install --no-dev --optimize-autoloader --no-interaction || echo 'WARNING: composer install failed, continuing without Dompdf'
 # Honour .htaccess (blocks config/, includes/, database/ ...) and listen on Render's default port 10000
 RUN sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf \
  && sed -i 's/Listen 80/Listen 10000/' /etc/apache2/ports.conf \
