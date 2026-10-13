@@ -26,13 +26,15 @@ function load_env(string $file): array
 $GLOBALS['ENV'] = load_env(ROOT . '/config/.env');
 function env(string $k, $default = null)
 {
-    return $GLOBALS['ENV'][$k] ?? $default;
+    if (isset($GLOBALS['ENV'][$k])) return $GLOBALS['ENV'][$k];
+    $v = getenv($k);               // hosting platforms (Render, Docker) provide real environment variables
+    return $v !== false ? trim($v) : $default;
 }
 
 set_exception_handler(function (Throwable $e) {
     error_log((string)$e);
     http_response_code(500);
-    $msg = env('APP_DEBUG', '0') === '1' ? $e->getMessage()
+    $msg = in_array(strtolower((string)env('APP_DEBUG', '0')), ['1', 'true', 'yes', 'on'], true) ? $e->getMessage()
         : 'Something went wrong. Please try again or contact the administrator.';
     echo '<div style="font-family:sans-serif;max-width:600px;margin:3rem auto"><h3>Error</h3><p>'
         . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</p></div>';
@@ -67,16 +69,21 @@ function db(): PDO
 {
     static $pdo = null;
     if ($pdo === null) {
-        if (!is_file(ROOT . '/config/.env')) {
+        if (!is_file(ROOT . '/config/.env') && !env('DB_NAME')) {
             throw new RuntimeException('config/.env not found. Copy config/.env.example to config/.env and set your database details.');
         }
         $dsn = sprintf('mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
             env('DB_HOST', 'localhost'), env('DB_PORT', '3306'), env('DB_NAME', ''));
-        $pdo = new PDO($dsn, (string)env('DB_USER', ''), (string)env('DB_PASS', ''), [
+        $opts = [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
-        ]);
+        ];
+        if (env('DB_SSL', '0') === '1') {   // many cloud MySQL providers require TLS
+            $opts[PDO::MYSQL_ATTR_SSL_CA] = '/etc/ssl/certs/ca-certificates.crt';
+            $opts[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+        }
+        $pdo = new PDO($dsn, (string)env('DB_USER', ''), (string)env('DB_PASS', ''), $opts);
         $pdo->exec("SET time_zone = '+08:00'");
     }
     return $pdo;
